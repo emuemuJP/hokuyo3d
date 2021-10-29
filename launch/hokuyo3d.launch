@@ -1,0 +1,15 @@
+<?xml version="1.0"?>
+<launch>
+  <arg name="basename" default="hokuyo3d"/>
+  <node pkg="hokuyo3d" type="hokuyo3d" name="hokuyo3d" respawn="true">
+    <param name="ip" value="192.168.0.10" />
+    <param name="port" value="10940"/>
+    <param name="horizontal_interlace" value="4"/>
+    <param name="vertical_interlace" value="1"/>
+    <param name="frame_id" value="hokuyo3d" />
+    <param name="imu_frame_id" value="hokuyo3d_imu" />
+    <param name="mag_frame_id" value="hokuyo3d_mag" />
+    <param name="allow_jump_back" value="false" />
+    <param name="output_cycle" value="field" />
+  </node>
+</launch>

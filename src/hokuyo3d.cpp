@@ -59,8 +59,7 @@ public:
       const boost::shared_array<vssp::XYZI>& points,
       const boost::posix_time::ptime& time_read)
   {
-    if (timestamp_base_ == ros::Time(0))
-      return;
+    if (timestamp_base_ == ros::Time(0)) return;
     // Pack scan data
     if (enable_pc_)
     {
@@ -146,13 +145,48 @@ public:
         cloud_stamp_last_ = cloud2_.header.stamp;
         cloud2_.data.clear();
       }
-      if (range_header.frame != frame_)
-        ping();
+      if (range_header.frame != frame_) ping();
       frame_ = range_header.frame;
       field_ = range_header.field;
       line_ = range_header.line;
     }
+
+    int current_horizontal_interlace_ = 0, current_vertical_interlace_=0;
+    pnh_.getParam("horizontal_interlace", current_horizontal_interlace_);
+    pnh_.getParam("vertical_interlace", current_vertical_interlace_);
+    if(current_horizontal_interlace_ != horizontal_interlace_)
+    {
+      if (current_horizontal_interlace_ <= 0 || current_horizontal_interlace_ > 20)
+      {
+        ROS_ERROR("Invalid horizontal_interlace value %d", current_horizontal_interlace_);
+        pnh_.setParam("horizontal_interlace", horizontal_interlace_);
+      }else
+      {
+        ROS_INFO("Setting horizontal_interlace param %d to %d", horizontal_interlace_, current_horizontal_interlace_);
+        horizontal_interlace_ = current_horizontal_interlace_;
+        pnh_.setParam("horizontal_interlace", horizontal_interlace_);
+        if (set_auto_reset_) driver_.setAutoReset(auto_reset_);
+        driver_.setHorizontalInterlace(horizontal_interlace_);
+      }
+    }
+    if(current_vertical_interlace_ != vertical_interlace_)
+    {
+      if (current_vertical_interlace_ <= 0 || current_vertical_interlace_ > 10)
+      {
+        ROS_ERROR("Invalid vertical interlace value %d", current_vertical_interlace_);
+        pnh_.setParam("vertical_interlace", vertical_interlace_);
+      }else
+      {
+        ROS_INFO("Setting vertical_interlace param: %d to %d", vertical_interlace_, current_vertical_interlace_);
+        vertical_interlace_ = current_vertical_interlace_;
+        pnh_.setParam("vertical_interlace", vertical_interlace_);
+        if (set_auto_reset_) driver_.setAutoReset(auto_reset_);
+        driver_.setVerticalInterlace(vertical_interlace_);
+        driver_.requestVerticalTable(vertical_interlace_);
+      }
+    }
   }
+
   void cbError(
       const vssp::Header& header,
       const std::string& message,
@@ -160,6 +194,7 @@ public:
   {
     ROS_ERROR("%s", message.c_str());
   }
+
   void cbPing(
       const vssp::Header& header,
       const boost::posix_time::ptime& time_read)
@@ -183,6 +218,7 @@ public:
 
     ROS_DEBUG("timestamp_base: %lf", timestamp_base_.toSec());
   }
+
   void cbAux(
       const vssp::Header& header,
       const vssp::AuxHeader& aux_header,
@@ -241,14 +277,14 @@ public:
       }
     }
   }
+
   void cbConnect(bool success)
   {
     if (success)
     {
       ROS_INFO("Connection established");
       ping();
-      if (set_auto_reset_)
-        driver_.setAutoReset(auto_reset_);
+      if (set_auto_reset_) driver_.setAutoReset(auto_reset_);
       driver_.setHorizontalInterlace(horizontal_interlace_);
       driver_.requestHorizontalTable();
       driver_.setVerticalInterlace(vertical_interlace_);
@@ -263,21 +299,24 @@ public:
       ROS_ERROR("Connection failed");
     }
   }
+
   Hokuyo3dNode()
     : pnh_("~")
     , timestamp_base_(0)
     , timer_(io_, boost::posix_time::milliseconds(500))
   {
-    if (pnh_.hasParam("horizontal_interlace") || !pnh_.hasParam("interlace"))
+    pnh_.param("horizontal_interlace", horizontal_interlace_, 4);
+    if (horizontal_interlace_ <= 0 || horizontal_interlace_ > 20)
     {
-      pnh_.param("horizontal_interlace", horizontal_interlace_, 4);
-    }
-    else if (pnh_.hasParam("interlace"))
-    {
-      ROS_WARN("'interlace' parameter is deprecated. Use horizontal_interlace instead.");
-      pnh_.param("interlace", horizontal_interlace_, 4);
+      ROS_ERROR("Invalid horizontal_interlace value %d", horizontal_interlace_);
+      ros::shutdown();
     }
     pnh_.param("vertical_interlace", vertical_interlace_, 1);
+    if (vertical_interlace_ <= 0 || vertical_interlace_ > 10)
+    {
+      ROS_ERROR("Invalid vertical_interlace_ value %d", vertical_interlace_);
+      ros::shutdown();
+    }
     pnh_.param("ip", ip_, std::string("192.168.0.10"));
     pnh_.param("port", port_, 10940);
     pnh_.param("frame_id", frame_id_, std::string("hokuyo3d"));
@@ -339,6 +378,7 @@ public:
     // Start communication with the sensor
     driver_.connect(ip_.c_str(), port_, boost::bind(&Hokuyo3dNode::cbConnect, this, _1));
   }
+
   ~Hokuyo3dNode()
   {
     driver_.requestAuxData(false);
@@ -347,6 +387,7 @@ public:
     driver_.poll();
     ROS_INFO("Communication stoped");
   }
+
   void cbSubscriber()
   {
     boost::lock_guard<boost::mutex> lock(connect_mutex_);
@@ -371,6 +412,7 @@ public:
       ROS_DEBUG("PointCloud2 output disabled");
     }
   }
+
   bool poll()
   {
     if (driver_.poll())
@@ -380,6 +422,7 @@ public:
     ROS_INFO("Connection closed");
     return false;
   }
+
   void cbTimer(const boost::system::error_code& error)
   {
     if (error)
@@ -397,11 +440,11 @@ public:
       timer_.async_wait(boost::bind(&Hokuyo3dNode::cbTimer, this, _1));
     }
   }
+
   void spin()
   {
     timer_.async_wait(boost::bind(&Hokuyo3dNode::cbTimer, this, _1));
-    boost::thread thread(
-        boost::bind(&boost::asio::io_service::run, &io_));
+    boost::thread thread(boost::bind(&boost::asio::io_service::run, &io_));
 
     ros::AsyncSpinner spinner(1);
     spinner.start();

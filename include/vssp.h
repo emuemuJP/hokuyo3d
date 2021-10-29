@@ -73,6 +73,9 @@ private:
       const boost::posix_time::ptime&)> cb_ping_;
   boost::function<void(
       const vssp::Header&,
+      const boost::posix_time::ptime&)> cb_param_;
+  boost::function<void(
+      const vssp::Header&,
       const std::string&,
       const boost::posix_time::ptime&)> cb_error_;
   boost::function<void(bool)> cb_connect_;
