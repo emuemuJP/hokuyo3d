@@ -134,7 +134,7 @@ public:
       if (enable_pc2_)
       {
         cloud2_.data.resize(cloud2_.width * cloud2_.point_step);
-        if (cloud2_.header.stamp < cloud_stamp_last_ && !allow_jump_back_)
+        if (cloud2_.header.stamp < cloud2_stamp_last_ && !allow_jump_back_)
         {
           ROS_INFO("Dropping timestamp jump backed cloud2");
         }
@@ -142,7 +142,7 @@ public:
         {
           pub_pc2_.publish(cloud2_);
         }
-        cloud_stamp_last_ = cloud2_.header.stamp;
+        cloud2_stamp_last_ = cloud2_.header.stamp;
         cloud2_.data.clear();
       }
       if (range_header.frame != frame_) ping();
@@ -482,6 +482,7 @@ protected:
   ros::Time imu_stamp_last_;
   ros::Time mag_stamp_last_;
   ros::Time cloud_stamp_last_;
+  ros::Time cloud2_stamp_last_;
 
   boost::asio::io_service io_;
   boost::asio::deadline_timer timer_;
