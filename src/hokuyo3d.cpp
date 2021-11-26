@@ -86,36 +86,78 @@ public:
     }
     if (enable_pc2_)
     {
-      if (cloud2_.data.size() == 0)
+      if (cloud2_frame_.data.size() == 0)
       {
         // Start packing PointCloud2 message
-        cloud2_.header.frame_id = frame_id_;
-        cloud2_.header.stamp = timestamp_base_ + ros::Duration(range_header.line_head_timestamp_ms * 0.001);
-        cloud2_.row_step = 0;
-        cloud2_.width = 0;
+        cloud2_frame_.header.frame_id = frame_id_;
+        cloud2_frame_.header.stamp = timestamp_base_ + ros::Duration(range_header.line_head_timestamp_ms * 0.001);
+        cloud2_frame_.row_step = 0;
+        cloud2_frame_.width = 0;
       }
       // Pack PointCloud2 message
-      cloud2_.data.resize((cloud2_.width + index[range_index.nspots]) * cloud2_.point_step);
+      cloud2_frame_.data.resize((cloud2_frame_.width + index[range_index.nspots]) * cloud2_frame_.point_step);
 
-      float* data = reinterpret_cast<float*>(&cloud2_.data[0]);
-      data += cloud2_.width * cloud2_.point_step / sizeof(float);
+      float* data_frame = reinterpret_cast<float*>(&cloud2_frame_.data[0]);
+      data_frame += cloud2_frame_.width * cloud2_frame_.point_step / sizeof(float);
+
+      if (cloud2_field_.data.size() == 0)
+      {
+        // Start packing PointCloud2 message
+        cloud2_field_.header.frame_id = frame_id_;
+        cloud2_field_.header.stamp = timestamp_base_ + ros::Duration(range_header.line_head_timestamp_ms * 0.001);
+        cloud2_field_.row_step = 0;
+        cloud2_field_.width = 0;
+      }
+      // Pack PointCloud2 message
+      cloud2_field_.data.resize((cloud2_field_.width + index[range_index.nspots]) * cloud2_field_.point_step);
+
+      float* data_field = reinterpret_cast<float*>(&cloud2_field_.data[0]);
+      data_field += cloud2_field_.width * cloud2_field_.point_step / sizeof(float);
+
+      if (cloud2_line_.data.size() == 0)
+      {
+        // Start packing PointCloud2 message
+        cloud2_line_.header.frame_id = frame_id_;
+        cloud2_line_.header.stamp = timestamp_base_ + ros::Duration(range_header.line_head_timestamp_ms * 0.001);
+        cloud2_line_.row_step = 0;
+        cloud2_line_.width = 0;
+      }
+      // Pack PointCloud2 message
+      cloud2_line_.data.resize((cloud2_line_.width + index[range_index.nspots]) * cloud2_line_.point_step);
+
+      float* data_line = reinterpret_cast<float*>(&cloud2_line_.data[0]);
+      data_line += cloud2_line_.width * cloud2_line_.point_step / sizeof(float);
+
       for (int i = 0; i < index[range_index.nspots]; i++)
       {
         if (points[i].r < range_min_)
         {
           continue;
         }
-        *(data++) = points[i].x;
-        *(data++) = points[i].y;
-        *(data++) = points[i].z;
-        *(data++) = points[i].i;
-        cloud2_.width++;
+        *(data_frame++) = points[i].x;
+        *(data_frame++) = points[i].y;
+        *(data_frame++) = points[i].z;
+        *(data_frame++) = points[i].i;
+        cloud2_frame_.width++;
+
+        *(data_field++) = points[i].x;
+        *(data_field++) = points[i].y;
+        *(data_field++) = points[i].z;
+        *(data_field++) = points[i].i;
+        cloud2_field_.width++;
+
+        *(data_line++) = points[i].x;
+        *(data_line++) = points[i].y;
+        *(data_line++) = points[i].z;
+        *(data_line++) = points[i].i;
+        cloud2_line_.width++;
       }
-      cloud2_.row_step = cloud2_.width * cloud2_.point_step;
+      cloud2_frame_.row_step = cloud2_frame_.width * cloud2_frame_.point_step;
+      cloud2_field_.row_step = cloud2_field_.width * cloud2_field_.point_step;
+      cloud2_line_.row_step = cloud2_line_.width * cloud2_line_.point_step;
     }
+    
     // Publish points
-    if ((cycle_ == CYCLE_FIELD && (range_header.field != field_ || range_header.frame != frame_)) ||
-        (cycle_ == CYCLE_FRAME && (range_header.frame != frame_)) || (cycle_ == CYCLE_LINE))
     {
       if (enable_pc_)
       {
@@ -133,17 +175,47 @@ public:
       }
       if (enable_pc2_)
       {
-        cloud2_.data.resize(cloud2_.width * cloud2_.point_step);
-        if (cloud2_.header.stamp < cloud2_stamp_last_ && !allow_jump_back_)
+        if(range_header.frame != frame_)
+        {
+          cloud2_frame_.data.resize(cloud2_frame_.width * cloud2_frame_.point_step);
+          if (cloud2_frame_.header.stamp < cloud2_frame_stamp_last_ && !allow_jump_back_)
+          {
+            ROS_INFO("Dropping timestamp jump backed cloud2_fame_");
+          }
+          else
+          {
+            pub_pc2_frame_.publish(cloud2_frame_);
+          }
+          cloud2_frame_stamp_last_ = cloud2_frame_.header.stamp;
+          cloud2_frame_.data.clear();
+        }
+
+        if((range_header.field != field_ || range_header.frame != frame_))
+        {
+          cloud2_field_.data.resize(cloud2_field_.width * cloud2_field_.point_step);
+          if (cloud2_field_.header.stamp < cloud2_field_stamp_last_ && !allow_jump_back_)
+          {
+            ROS_INFO("Dropping timestamp jump backed cloud2_field");
+          }
+          else
+          {
+            pub_pc2_field_.publish(cloud2_field_);
+          }
+          cloud2_field_stamp_last_ = cloud2_field_.header.stamp;
+          cloud2_field_.data.clear();
+        }
+
+        cloud2_line_.data.resize(cloud2_line_.width * cloud2_line_.point_step);
+        if (cloud2_line_.header.stamp < cloud2_line_stamp_last_ && !allow_jump_back_)
         {
           ROS_INFO("Dropping timestamp jump backed cloud2");
         }
         else
         {
-          pub_pc2_.publish(cloud2_);
+          pub_pc2_line_.publish(cloud2_line_);
         }
-        cloud2_stamp_last_ = cloud2_.header.stamp;
-        cloud2_.data.clear();
+        cloud2_line_stamp_last_ = cloud2_line_.header.stamp;
+        cloud2_line_.data.clear();
       }
       if (range_header.frame != frame_) ping();
       frame_ = range_header.frame;
@@ -328,21 +400,6 @@ public:
 
     pnh_.param("allow_jump_back", allow_jump_back_, false);
 
-    std::string output_cycle;
-    pnh_.param("output_cycle", output_cycle, std::string("field"));
-
-    if (output_cycle.compare("frame") == 0)
-      cycle_ = CYCLE_FRAME;
-    else if (output_cycle.compare("field") == 0)
-      cycle_ = CYCLE_FIELD;
-    else if (output_cycle.compare("line") == 0)
-      cycle_ = CYCLE_LINE;
-    else
-    {
-      ROS_ERROR("Unknown output_cycle value %s", output_cycle.c_str());
-      ros::shutdown();
-    }
-
     driver_.setTimeout(2.0);
     ROS_INFO("Connecting to %s", ip_.c_str());
     driver_.registerCallback(boost::bind(&Hokuyo3dNode::cbPoint, this, _1, _2, _3, _4, _5, _6));
@@ -357,11 +414,25 @@ public:
     channel.name = std::string("intensity");
     cloud_.channels.push_back(channel);
 
-    cloud2_.height = 1;
-    cloud2_.is_bigendian = false;
-    cloud2_.is_dense = false;
-    sensor_msgs::PointCloud2Modifier pc2_modifier(cloud2_);
-    pc2_modifier.setPointCloud2Fields(4, "x", 1, sensor_msgs::PointField::FLOAT32, "y", 1,
+    cloud2_frame_.height = 1;
+    cloud2_field_.height = 1;
+    cloud2_line_.height = 1;
+    cloud2_frame_.is_bigendian = false;
+    cloud2_field_.is_bigendian = false;
+    cloud2_line_.is_bigendian = false;
+    cloud2_frame_.is_dense = false;
+    cloud2_field_.is_dense = false;
+    cloud2_line_.is_dense = false;
+    sensor_msgs::PointCloud2Modifier pc2_frame_modifier(cloud2_frame_);
+    sensor_msgs::PointCloud2Modifier pc2_field_modifier(cloud2_field_);
+    sensor_msgs::PointCloud2Modifier pc2_line_modifier(cloud2_line_);
+    pc2_frame_modifier.setPointCloud2Fields(4, "x", 1, sensor_msgs::PointField::FLOAT32, "y", 1,
+                                      sensor_msgs::PointField::FLOAT32, "z", 1, sensor_msgs::PointField::FLOAT32,
+                                      "intensity", 1, sensor_msgs::PointField::FLOAT32);
+    pc2_field_modifier.setPointCloud2Fields(4, "x", 1, sensor_msgs::PointField::FLOAT32, "y", 1,
+                                      sensor_msgs::PointField::FLOAT32, "z", 1, sensor_msgs::PointField::FLOAT32,
+                                      "intensity", 1, sensor_msgs::PointField::FLOAT32);
+    pc2_line_modifier.setPointCloud2Fields(4, "x", 1, sensor_msgs::PointField::FLOAT32, "y", 1,
                                       sensor_msgs::PointField::FLOAT32, "z", 1, sensor_msgs::PointField::FLOAT32,
                                       "intensity", 1, sensor_msgs::PointField::FLOAT32);
 
@@ -373,7 +444,9 @@ public:
 
     boost::lock_guard<boost::mutex> lock(connect_mutex_);
     pub_pc_ = pnh_.advertise<sensor_msgs::PointCloud>("hokuyo_cloud", 5, cb_con, cb_con);
-    pub_pc2_ = pnh_.advertise<sensor_msgs::PointCloud2>("hokuyo_cloud2", 5, cb_con, cb_con);
+    pub_pc2_frame_ = pnh_.advertise<sensor_msgs::PointCloud2>("hokuyo_cloud2_frame", 5, cb_con, cb_con);
+    pub_pc2_field_ = pnh_.advertise<sensor_msgs::PointCloud2>("hokuyo_cloud2_field", 5, cb_con, cb_con);
+    pub_pc2_line_ = pnh_.advertise<sensor_msgs::PointCloud2>("hokuyo_cloud2_line", 5, cb_con, cb_con);
 
     // Start communication with the sensor
     driver_.connect(ip_.c_str(), port_, boost::bind(&Hokuyo3dNode::cbConnect, this, _1));
@@ -401,7 +474,7 @@ public:
       enable_pc_ = false;
       ROS_DEBUG("PointCloud output disabled");
     }
-    if (pub_pc2_.getNumSubscribers() > 0)
+    if (pub_pc2_frame_.getNumSubscribers() > 0 || pub_pc2_field_.getNumSubscribers() > 0 || pub_pc2_line_.getNumSubscribers() > 0)
     {
       enable_pc2_ = true;
       ROS_DEBUG("PointCloud2 output enabled");
@@ -462,12 +535,16 @@ public:
 protected:
   ros::NodeHandle pnh_;
   ros::Publisher pub_pc_;
-  ros::Publisher pub_pc2_;
+  ros::Publisher pub_pc2_frame_;
+  ros::Publisher pub_pc2_field_;
+  ros::Publisher pub_pc2_line_;
   ros::Publisher pub_imu_;
   ros::Publisher pub_mag_;
   vssp::VsspDriver driver_;
   sensor_msgs::PointCloud cloud_;
-  sensor_msgs::PointCloud2 cloud2_;
+  sensor_msgs::PointCloud2 cloud2_frame_;
+  sensor_msgs::PointCloud2 cloud2_field_;
+  sensor_msgs::PointCloud2 cloud2_line_;
   sensor_msgs::Imu imu_;
   sensor_msgs::MagneticField mag_;
 
@@ -482,7 +559,9 @@ protected:
   ros::Time imu_stamp_last_;
   ros::Time mag_stamp_last_;
   ros::Time cloud_stamp_last_;
-  ros::Time cloud2_stamp_last_;
+  ros::Time cloud2_frame_stamp_last_;
+  ros::Time cloud2_field_stamp_last_;
+  ros::Time cloud2_line_stamp_last_;
 
   boost::asio::io_service io_;
   boost::asio::deadline_timer timer_;
