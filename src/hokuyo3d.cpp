@@ -48,6 +48,102 @@
 
 #include <vssp.h>
 
+class Hokuyo3dTopic
+{
+public:
+  Hokuyo3dTopic(
+    ros::NodeHandle pnh, 
+    std::string frame_id,
+    std::string topic_name, 
+    ros::SubscriberStatusCallback cb_con,
+    const bool allow_jump_back)
+  {
+    pub_pc2_ = pnh.advertise<sensor_msgs::PointCloud2>(topic_name, 5, cb_con, cb_con);
+    cloud2_.height = 1;
+    cloud2_.is_bigendian = false;
+    cloud2_.is_dense = false;
+
+    sensor_msgs::PointCloud2Modifier pc2_modifier(cloud2_);
+    pc2_modifier.setPointCloud2Fields(4, 
+      "x", 1, sensor_msgs::PointField::FLOAT32, 
+      "y", 1, sensor_msgs::PointField::FLOAT32, 
+      "z", 1, sensor_msgs::PointField::FLOAT32,
+      "intensity", 1, sensor_msgs::PointField::FLOAT32);
+
+    frame_id_ = frame_id;
+    allow_jump_back_ = allow_jump_back;
+  }
+
+  void initializeMessage(
+    const ros::Time timestamp_base_,
+    const vssp::RangeHeader& range_header,
+    const vssp::RangeIndex& range_index,
+    const boost::shared_array<uint16_t>& index)
+  {
+    if (cloud2_.data.size() == 0)
+    {
+      // Start packing PointCloud2 message
+      cloud2_.header.frame_id = frame_id_;
+      cloud2_.header.stamp = timestamp_base_ + ros::Duration(range_header.line_head_timestamp_ms * 0.001);
+      cloud2_.row_step = 0;
+      cloud2_.width = 0;
+    }
+    // Pack PointCloud2 message
+    // cloud2_.data.resize((cloud2_.width + index[range_index.nspots]) * cloud2_.point_step);
+
+    data_frame_ = reinterpret_cast<float*>(&cloud2_.data[0]);
+    data_frame_ += cloud2_.width * cloud2_.point_step / sizeof(float);
+  }
+
+  void publish(int topic_header)
+  {
+      if(topic_header != id_)
+      {
+        cloud2_.data.resize(cloud2_.width * cloud2_.point_step);
+        if (cloud2_.header.stamp < cloud2_stamp_last_ && !allow_jump_back_)
+        {
+          ROS_INFO("Dropping timestamp jump backed cloud2_");
+        }
+        else
+        {
+          pub_pc2_.publish(cloud2_);
+        }
+        cloud2_stamp_last_ = cloud2_.header.stamp;
+        cloud2_.data.clear();
+      }
+      id_ = topic_header;
+  }
+
+  void addPoint(const vssp::XYZI& point)
+  {
+      *(data_frame_++) = point.x;
+      *(data_frame_++) = point.y;
+      *(data_frame_++) = point.z;
+      *(data_frame_++) = point.i;
+      cloud2_.width++;
+  }
+
+  void calcRowStep()
+  {
+    cloud2_.row_step = cloud2_.width * cloud2_.point_step;
+  }
+
+  int getNumSubscribers()
+  {
+    return pub_pc2_.getNumSubscribers();
+  }
+
+protected:
+  int id_;
+  std::string frame_id_; 
+  ros::Publisher pub_pc2_;
+  sensor_msgs::PointCloud2 cloud2_;
+  ros::Time cloud2_stamp_last_;
+  bool allow_jump_back_;
+  float* data_frame_;
+};
+
+
 class Hokuyo3dNode
 {
 public:
@@ -86,47 +182,51 @@ public:
     }
     if (enable_pc2_)
     {
-      if (cloud2_frame_.data.size() == 0)
-      {
-        // Start packing PointCloud2 message
-        cloud2_frame_.header.frame_id = frame_id_;
-        cloud2_frame_.header.stamp = timestamp_base_ + ros::Duration(range_header.line_head_timestamp_ms * 0.001);
-        cloud2_frame_.row_step = 0;
-        cloud2_frame_.width = 0;
-      }
-      // Pack PointCloud2 message
-      cloud2_frame_.data.resize((cloud2_frame_.width + index[range_index.nspots]) * cloud2_frame_.point_step);
+      frame_topic->initializeMessage(timestamp_base_, range_header, range_index, index);
+      field_topic->initializeMessage(timestamp_base_, range_header, range_index, index);
+      line_topic->initializeMessage(timestamp_base_, range_header, range_index, index);
+      
+      // if (cloud2_frame_.data.size() == 0)
+      // {
+      //   // Start packing PointCloud2 message
+      //   cloud2_frame_.header.frame_id = frame_id_;
+      //   cloud2_frame_.header.stamp = timestamp_base_ + ros::Duration(range_header.line_head_timestamp_ms * 0.001);
+      //   cloud2_frame_.row_step = 0;
+      //   cloud2_frame_.width = 0;
+      // }
+      // // Pack PointCloud2 message
+      // cloud2_frame_.data.resize((cloud2_frame_.width + index[range_index.nspots]) * cloud2_frame_.point_step);
 
-      float* data_frame = reinterpret_cast<float*>(&cloud2_frame_.data[0]);
-      data_frame += cloud2_frame_.width * cloud2_frame_.point_step / sizeof(float);
+      // float* data_frame = reinterpret_cast<float*>(&cloud2_frame_.data[0]);
+      // data_frame += cloud2_frame_.width * cloud2_frame_.point_step / sizeof(float);
 
-      if (cloud2_field_.data.size() == 0)
-      {
-        // Start packing PointCloud2 message
-        cloud2_field_.header.frame_id = frame_id_;
-        cloud2_field_.header.stamp = timestamp_base_ + ros::Duration(range_header.line_head_timestamp_ms * 0.001);
-        cloud2_field_.row_step = 0;
-        cloud2_field_.width = 0;
-      }
-      // Pack PointCloud2 message
-      cloud2_field_.data.resize((cloud2_field_.width + index[range_index.nspots]) * cloud2_field_.point_step);
+      // if (cloud2_field_.data.size() == 0)
+      // {
+      //   // Start packing PointCloud2 message
+      //   cloud2_field_.header.frame_id = frame_id_;
+      //   cloud2_field_.header.stamp = timestamp_base_ + ros::Duration(range_header.line_head_timestamp_ms * 0.001);
+      //   cloud2_field_.row_step = 0;
+      //   cloud2_field_.width = 0;
+      // }
+      // // Pack PointCloud2 message
+      // cloud2_field_.data.resize((cloud2_field_.width + index[range_index.nspots]) * cloud2_field_.point_step);
 
-      float* data_field = reinterpret_cast<float*>(&cloud2_field_.data[0]);
-      data_field += cloud2_field_.width * cloud2_field_.point_step / sizeof(float);
+      // float* data_field = reinterpret_cast<float*>(&cloud2_field_.data[0]);
+      // data_field += cloud2_field_.width * cloud2_field_.point_step / sizeof(float);
 
-      if (cloud2_line_.data.size() == 0)
-      {
-        // Start packing PointCloud2 message
-        cloud2_line_.header.frame_id = frame_id_;
-        cloud2_line_.header.stamp = timestamp_base_ + ros::Duration(range_header.line_head_timestamp_ms * 0.001);
-        cloud2_line_.row_step = 0;
-        cloud2_line_.width = 0;
-      }
-      // Pack PointCloud2 message
-      cloud2_line_.data.resize((cloud2_line_.width + index[range_index.nspots]) * cloud2_line_.point_step);
+      // if (cloud2_line_.data.size() == 0)
+      // {
+      //   // Start packing PointCloud2 message
+      //   cloud2_line_.header.frame_id = frame_id_;
+      //   cloud2_line_.header.stamp = timestamp_base_ + ros::Duration(range_header.line_head_timestamp_ms * 0.001);
+      //   cloud2_line_.row_step = 0;
+      //   cloud2_line_.width = 0;
+      // }
+      // // Pack PointCloud2 message
+      // cloud2_line_.data.resize((cloud2_line_.width + index[range_index.nspots]) * cloud2_line_.point_step);
 
-      float* data_line = reinterpret_cast<float*>(&cloud2_line_.data[0]);
-      data_line += cloud2_line_.width * cloud2_line_.point_step / sizeof(float);
+      // float* data_line = reinterpret_cast<float*>(&cloud2_line_.data[0]);
+      // data_line += cloud2_line_.width * cloud2_line_.point_step / sizeof(float);
 
       for (int i = 0; i < index[range_index.nspots]; i++)
       {
@@ -134,27 +234,34 @@ public:
         {
           continue;
         }
-        *(data_frame++) = points[i].x;
-        *(data_frame++) = points[i].y;
-        *(data_frame++) = points[i].z;
-        *(data_frame++) = points[i].i;
-        cloud2_frame_.width++;
+        frame_topic->addPoint(points[i]);
+        field_topic->addPoint(points[i]);
+        line_topic->addPoint(points[i]);
 
-        *(data_field++) = points[i].x;
-        *(data_field++) = points[i].y;
-        *(data_field++) = points[i].z;
-        *(data_field++) = points[i].i;
-        cloud2_field_.width++;
+        // *(data_frame++) = points[i].x;
+        // *(data_frame++) = points[i].y;
+        // *(data_frame++) = points[i].z;
+        // *(data_frame++) = points[i].i;
+        // cloud2_frame_.width++;
 
-        *(data_line++) = points[i].x;
-        *(data_line++) = points[i].y;
-        *(data_line++) = points[i].z;
-        *(data_line++) = points[i].i;
-        cloud2_line_.width++;
+        // *(data_field++) = points[i].x;
+        // *(data_field++) = points[i].y;
+        // *(data_field++) = points[i].z;
+        // *(data_field++) = points[i].i;
+        // cloud2_field_.width++;
+
+        // *(data_line++) = points[i].x;
+        // *(data_line++) = points[i].y;
+        // *(data_line++) = points[i].z;
+        // *(data_line++) = points[i].i;
+        // cloud2_line_.width++;
       }
-      cloud2_frame_.row_step = cloud2_frame_.width * cloud2_frame_.point_step;
-      cloud2_field_.row_step = cloud2_field_.width * cloud2_field_.point_step;
-      cloud2_line_.row_step = cloud2_line_.width * cloud2_line_.point_step;
+      frame_topic->calcRowStep();
+      field_topic->calcRowStep();
+      line_topic->calcRowStep();
+      // cloud2_frame_.row_step = cloud2_frame_.width * cloud2_frame_.point_step;
+      // cloud2_field_.row_step = cloud2_field_.width * cloud2_field_.point_step;
+      // cloud2_line_.row_step = cloud2_line_.width * cloud2_line_.point_step;
     }
     
     // Publish points
@@ -175,52 +282,57 @@ public:
       }
       if (enable_pc2_)
       {
-        if(range_header.frame != frame_)
-        {
-          cloud2_frame_.data.resize(cloud2_frame_.width * cloud2_frame_.point_step);
-          if (cloud2_frame_.header.stamp < cloud2_frame_stamp_last_ && !allow_jump_back_)
-          {
-            ROS_INFO("Dropping timestamp jump backed cloud2_fame_");
-          }
-          else
-          {
-            pub_pc2_frame_.publish(cloud2_frame_);
-          }
-          cloud2_frame_stamp_last_ = cloud2_frame_.header.stamp;
-          cloud2_frame_.data.clear();
-        }
+        frame_topic->publish(range_header.frame);
+        field_topic->publish(range_header.field);
+        line_topic->publish(range_header.line);
 
-        if((range_header.field != field_ || range_header.frame != frame_))
-        {
-          cloud2_field_.data.resize(cloud2_field_.width * cloud2_field_.point_step);
-          if (cloud2_field_.header.stamp < cloud2_field_stamp_last_ && !allow_jump_back_)
-          {
-            ROS_INFO("Dropping timestamp jump backed cloud2_field");
-          }
-          else
-          {
-            pub_pc2_field_.publish(cloud2_field_);
-          }
-          cloud2_field_stamp_last_ = cloud2_field_.header.stamp;
-          cloud2_field_.data.clear();
-        }
+        // if(range_header.frame != frame_)
+        // {
+        //   cloud2_frame_.data.resize(cloud2_frame_.width * cloud2_frame_.point_step);
+        //   if (cloud2_frame_.header.stamp < cloud2_frame_stamp_last_ && !allow_jump_back_)
+        //   {
+        //     ROS_INFO("Dropping timestamp jump backed cloud2_fame_");
+        //   }
+        //   else
+        //   {
+        //     pub_pc2_frame_.publish(cloud2_frame_);
+        //   }
+        //   cloud2_frame_stamp_last_ = cloud2_frame_.header.stamp;
+        //   cloud2_frame_.data.clear();
+        // }
 
-        cloud2_line_.data.resize(cloud2_line_.width * cloud2_line_.point_step);
-        if (cloud2_line_.header.stamp < cloud2_line_stamp_last_ && !allow_jump_back_)
-        {
-          ROS_INFO("Dropping timestamp jump backed cloud2");
-        }
-        else
-        {
-          pub_pc2_line_.publish(cloud2_line_);
-        }
-        cloud2_line_stamp_last_ = cloud2_line_.header.stamp;
-        cloud2_line_.data.clear();
+        // if((range_header.field != field_ || range_header.frame != frame_))
+        // {
+        //   cloud2_field_.data.resize(cloud2_field_.width * cloud2_field_.point_step);
+        //   if (cloud2_field_.header.stamp < cloud2_field_stamp_last_ && !allow_jump_back_)
+        //   {
+        //     ROS_INFO("Dropping timestamp jump backed cloud2_field");
+        //   }
+        //   else
+        //   {
+        //     pub_pc2_field_.publish(cloud2_field_);
+        //   }
+        //   cloud2_field_stamp_last_ = cloud2_field_.header.stamp;
+        //   cloud2_field_.data.clear();
+        // }
+
+        // cloud2_line_.data.resize(cloud2_line_.width * cloud2_line_.point_step);
+        // if (cloud2_line_.header.stamp < cloud2_line_stamp_last_ && !allow_jump_back_)
+        // {
+        //   ROS_INFO("Dropping timestamp jump backed cloud2");
+        // }
+        // else
+        // {
+        //   pub_pc2_line_.publish(cloud2_line_);
+        // }
+        // cloud2_line_stamp_last_ = cloud2_line_.header.stamp;
+        // cloud2_line_.data.clear();
+
+        // frame_ = range_header.frame;
+        // field_ = range_header.field;
+        // line_ = range_header.line;
       }
-      if (range_header.frame != frame_) ping();
-      frame_ = range_header.frame;
-      field_ = range_header.field;
-      line_ = range_header.line;
+      ping();
     }
 
     int current_horizontal_interlace_ = 0, current_vertical_interlace_=0;
@@ -406,35 +518,35 @@ public:
     driver_.registerAuxCallback(boost::bind(&Hokuyo3dNode::cbAux, this, _1, _2, _3, _4));
     driver_.registerPingCallback(boost::bind(&Hokuyo3dNode::cbPing, this, _1, _2));
     driver_.registerErrorCallback(boost::bind(&Hokuyo3dNode::cbError, this, _1, _2, _3));
-    field_ = 0;
-    frame_ = 0;
-    line_ = 0;
+    // field_ = 0;
+    // frame_ = 0;
+    // line_ = 0;
 
     sensor_msgs::ChannelFloat32 channel;
     channel.name = std::string("intensity");
     cloud_.channels.push_back(channel);
 
-    cloud2_frame_.height = 1;
-    cloud2_field_.height = 1;
-    cloud2_line_.height = 1;
-    cloud2_frame_.is_bigendian = false;
-    cloud2_field_.is_bigendian = false;
-    cloud2_line_.is_bigendian = false;
-    cloud2_frame_.is_dense = false;
-    cloud2_field_.is_dense = false;
-    cloud2_line_.is_dense = false;
-    sensor_msgs::PointCloud2Modifier pc2_frame_modifier(cloud2_frame_);
-    sensor_msgs::PointCloud2Modifier pc2_field_modifier(cloud2_field_);
-    sensor_msgs::PointCloud2Modifier pc2_line_modifier(cloud2_line_);
-    pc2_frame_modifier.setPointCloud2Fields(4, "x", 1, sensor_msgs::PointField::FLOAT32, "y", 1,
-                                      sensor_msgs::PointField::FLOAT32, "z", 1, sensor_msgs::PointField::FLOAT32,
-                                      "intensity", 1, sensor_msgs::PointField::FLOAT32);
-    pc2_field_modifier.setPointCloud2Fields(4, "x", 1, sensor_msgs::PointField::FLOAT32, "y", 1,
-                                      sensor_msgs::PointField::FLOAT32, "z", 1, sensor_msgs::PointField::FLOAT32,
-                                      "intensity", 1, sensor_msgs::PointField::FLOAT32);
-    pc2_line_modifier.setPointCloud2Fields(4, "x", 1, sensor_msgs::PointField::FLOAT32, "y", 1,
-                                      sensor_msgs::PointField::FLOAT32, "z", 1, sensor_msgs::PointField::FLOAT32,
-                                      "intensity", 1, sensor_msgs::PointField::FLOAT32);
+    // cloud2_frame_.height = 1;
+    // cloud2_field_.height = 1;
+    // cloud2_line_.height = 1;
+    // cloud2_frame_.is_bigendian = false;
+    // cloud2_field_.is_bigendian = false;
+    // cloud2_line_.is_bigendian = false;
+    // cloud2_frame_.is_dense = false;
+    // cloud2_field_.is_dense = false;
+    // cloud2_line_.is_dense = false;
+    // sensor_msgs::PointCloud2Modifier pc2_frame_modifier(cloud2_frame_);
+    // sensor_msgs::PointCloud2Modifier pc2_field_modifier(cloud2_field_);
+    // sensor_msgs::PointCloud2Modifier pc2_line_modifier(cloud2_line_);
+    // pc2_frame_modifier.setPointCloud2Fields(4, "x", 1, sensor_msgs::PointField::FLOAT32, "y", 1,
+    //                                   sensor_msgs::PointField::FLOAT32, "z", 1, sensor_msgs::PointField::FLOAT32,
+    //                                   "intensity", 1, sensor_msgs::PointField::FLOAT32);
+    // pc2_field_modifier.setPointCloud2Fields(4, "x", 1, sensor_msgs::PointField::FLOAT32, "y", 1,
+    //                                   sensor_msgs::PointField::FLOAT32, "z", 1, sensor_msgs::PointField::FLOAT32,
+    //                                   "intensity", 1, sensor_msgs::PointField::FLOAT32);
+    // pc2_line_modifier.setPointCloud2Fields(4, "x", 1, sensor_msgs::PointField::FLOAT32, "y", 1,
+    //                                   sensor_msgs::PointField::FLOAT32, "z", 1, sensor_msgs::PointField::FLOAT32,
+    //                                   "intensity", 1, sensor_msgs::PointField::FLOAT32);
 
     pub_imu_ = pnh_.advertise<sensor_msgs::Imu>("imu", 5);
     pub_mag_ = pnh_.advertise<sensor_msgs::MagneticField>("mag", 5);
@@ -444,9 +556,13 @@ public:
 
     boost::lock_guard<boost::mutex> lock(connect_mutex_);
     pub_pc_ = pnh_.advertise<sensor_msgs::PointCloud>("hokuyo_cloud", 5, cb_con, cb_con);
-    pub_pc2_frame_ = pnh_.advertise<sensor_msgs::PointCloud2>("hokuyo_cloud2_frame", 5, cb_con, cb_con);
-    pub_pc2_field_ = pnh_.advertise<sensor_msgs::PointCloud2>("hokuyo_cloud2_field", 5, cb_con, cb_con);
-    pub_pc2_line_ = pnh_.advertise<sensor_msgs::PointCloud2>("hokuyo_cloud2_line", 5, cb_con, cb_con);
+    // pub_pc2_frame_ = pnh_.advertise<sensor_msgs::PointCloud2>("hokuyo_cloud2_frame", 5, cb_con, cb_con);
+    // pub_pc2_field_ = pnh_.advertise<sensor_msgs::PointCloud2>("hokuyo_cloud2_field", 5, cb_con, cb_con);
+    // pub_pc2_line_ = pnh_.advertise<sensor_msgs::PointCloud2>("hokuyo_cloud2_line", 5, cb_con, cb_con);
+
+    frame_topic = new Hokuyo3dTopic(pnh_, frame_id_, std::string("hokuyo_cloud2_frame"), cb_con, allow_jump_back_);
+    field_topic = new Hokuyo3dTopic(pnh_, frame_id_, std::string("hokuyo_cloud2_field"), cb_con, allow_jump_back_);
+    line_topic  = new Hokuyo3dTopic(pnh_, frame_id_, std::string("hokuyo_cloud2_line"),  cb_con, allow_jump_back_);
 
     // Start communication with the sensor
     driver_.connect(ip_.c_str(), port_, boost::bind(&Hokuyo3dNode::cbConnect, this, _1));
@@ -474,7 +590,8 @@ public:
       enable_pc_ = false;
       ROS_DEBUG("PointCloud output disabled");
     }
-    if (pub_pc2_frame_.getNumSubscribers() > 0 || pub_pc2_field_.getNumSubscribers() > 0 || pub_pc2_line_.getNumSubscribers() > 0)
+    // if (pub_pc2_frame_.getNumSubscribers() > 0 || pub_pc2_field_.getNumSubscribers() > 0 || pub_pc2_line_.getNumSubscribers() > 0)
+    if (frame_topic->getNumSubscribers() > 0 || field_topic->getNumSubscribers() > 0 || line_topic->getNumSubscribers() > 0)
     {
       enable_pc2_ = true;
       ROS_DEBUG("PointCloud2 output enabled");
@@ -535,16 +652,18 @@ public:
 protected:
   ros::NodeHandle pnh_;
   ros::Publisher pub_pc_;
-  ros::Publisher pub_pc2_frame_;
-  ros::Publisher pub_pc2_field_;
-  ros::Publisher pub_pc2_line_;
+
+  // ros::Publisher pub_pc2_frame_;
+  // ros::Publisher pub_pc2_field_;
+  // ros::Publisher pub_pc2_line_;
+  
   ros::Publisher pub_imu_;
   ros::Publisher pub_mag_;
   vssp::VsspDriver driver_;
   sensor_msgs::PointCloud cloud_;
-  sensor_msgs::PointCloud2 cloud2_frame_;
-  sensor_msgs::PointCloud2 cloud2_field_;
-  sensor_msgs::PointCloud2 cloud2_line_;
+  // sensor_msgs::PointCloud2 cloud2_frame_;
+  // sensor_msgs::PointCloud2 cloud2_field_;
+  // sensor_msgs::PointCloud2 cloud2_line_;
   sensor_msgs::Imu imu_;
   sensor_msgs::MagneticField mag_;
 
@@ -559,24 +678,19 @@ protected:
   ros::Time imu_stamp_last_;
   ros::Time mag_stamp_last_;
   ros::Time cloud_stamp_last_;
-  ros::Time cloud2_frame_stamp_last_;
-  ros::Time cloud2_field_stamp_last_;
-  ros::Time cloud2_line_stamp_last_;
+  // ros::Time cloud2_frame_stamp_last_;
+  // ros::Time cloud2_field_stamp_last_;
+  // ros::Time cloud2_line_stamp_last_;
 
   boost::asio::io_service io_;
   boost::asio::deadline_timer timer_;
-
-  int field_;
-  int frame_;
-  int line_;
-
-  enum PublishCycle
-  {
-    CYCLE_FIELD,
-    CYCLE_FRAME,
-    CYCLE_LINE
-  };
-  PublishCycle cycle_;
+  
+  // int field_;
+  // int frame_;
+  // int line_;
+  Hokuyo3dTopic* frame_topic = nullptr;//new Hokuyo3dTopic(pnh_, frame_id_, std::string("hokuyo_cloud2_frame"), cb_con, allow_jump_back_);
+  Hokuyo3dTopic* field_topic = nullptr;//new Hokuyo3dTopic(pnh_, frame_id_, std::string("hokuyo_cloud2_field"), cb_con, allow_jump_back_);
+  Hokuyo3dTopic* line_topic = nullptr;//new Hokuyo3dTopic(pnh_, frame_id_, std::string("hokuyo_cloud2_line"), cb_con, allow_jump_back_);
   std::string ip_;
   int port_;
   int horizontal_interlace_;
