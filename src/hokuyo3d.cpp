@@ -182,22 +182,22 @@ public:
     }
     if (enable_pc2_)
     {
-      frame_topic->initializeMessage(timestamp_base_, range_header, range_index, index);
-      field_topic->initializeMessage(timestamp_base_, range_header, range_index, index);
-      line_topic->initializeMessage(timestamp_base_, range_header, range_index, index);
+      if(enable_frame_topic_) frame_topic->initializeMessage(timestamp_base_, range_header, range_index, index);
+      if(enable_field_topic_) field_topic->initializeMessage(timestamp_base_, range_header, range_index, index);
+      if(enable_line_topic_) line_topic->initializeMessage(timestamp_base_, range_header, range_index, index);
       for (int i = 0; i < index[range_index.nspots]; i++)
       {
         if (points[i].r < range_min_)
         {
           continue;
         }
-        frame_topic->addPoint(points[i]);
-        field_topic->addPoint(points[i]);
-        line_topic->addPoint(points[i]);
+        if(enable_frame_topic_) frame_topic->addPoint(points[i]);
+        if(enable_field_topic_) field_topic->addPoint(points[i]);
+        if(enable_line_topic_) line_topic->addPoint(points[i]);
       }
-      frame_topic->calcRowStep();
-      field_topic->calcRowStep();
-      line_topic->calcRowStep();
+      if(enable_frame_topic_) frame_topic->calcRowStep();
+      if(enable_field_topic_) field_topic->calcRowStep();
+      if(enable_line_topic_) line_topic->calcRowStep();
     }
     
     // Publish points
@@ -218,9 +218,9 @@ public:
       }
       if (enable_pc2_)
       {
-        frame_topic->publish(range_header.frame);
-        field_topic->publish(range_header.field);
-        line_topic->publish(range_header.line);
+        if(enable_frame_topic_) frame_topic->publish(range_header.frame);
+        if(enable_field_topic_) field_topic->publish(range_header.field);
+        if(enable_line_topic_) line_topic->publish(range_header.line);
       }
       ping();
     }
@@ -399,8 +399,11 @@ public:
     pnh_.param("range_min", range_min_, 0.0);
     set_auto_reset_ = pnh_.hasParam("auto_reset");
     pnh_.param("auto_reset", auto_reset_, false);
-
     pnh_.param("allow_jump_back", allow_jump_back_, false);
+
+    pnh_.param("enable_frame_topic", enable_frame_topic_, false);
+    pnh_.param("enable_field_topic", enable_field_topic_, false);
+    pnh_.param("enable_line_topic", enable_line_topic_, false);
 
     driver_.setTimeout(2.0);
     ROS_INFO("Connecting to %s", ip_.c_str());
@@ -423,9 +426,9 @@ public:
     boost::lock_guard<boost::mutex> lock(connect_mutex_);
     pub_pc_ = pnh_.advertise<sensor_msgs::PointCloud>("hokuyo_cloud", 5, cb_con, cb_con);
 
-    frame_topic = new Hokuyo3dTopic(pnh_, frame_id_, std::string("hokuyo_cloud2_frame"), cb_con, allow_jump_back_);
-    field_topic = new Hokuyo3dTopic(pnh_, frame_id_, std::string("hokuyo_cloud2_field"), cb_con, allow_jump_back_);
-    line_topic  = new Hokuyo3dTopic(pnh_, frame_id_, std::string("hokuyo_cloud2_line"),  cb_con, allow_jump_back_);
+    if(enable_frame_topic_) frame_topic = new Hokuyo3dTopic(pnh_, frame_id_, std::string("hokuyo_cloud2_frame"), cb_con, allow_jump_back_);
+    if(enable_field_topic_) field_topic = new Hokuyo3dTopic(pnh_, frame_id_, std::string("hokuyo_cloud2_field"), cb_con, allow_jump_back_);
+    if(enable_line_topic_)  line_topic  = new Hokuyo3dTopic(pnh_, frame_id_, std::string("hokuyo_cloud2_line"),  cb_con, allow_jump_back_);
 
     // Start communication with the sensor
     driver_.connect(ip_.c_str(), port_, boost::bind(&Hokuyo3dNode::cbConnect, this, _1));
@@ -537,6 +540,10 @@ protected:
   boost::asio::io_service io_;
   boost::asio::deadline_timer timer_;
   
+  bool enable_frame_topic_;
+  bool enable_field_topic_;
+  bool enable_line_topic_;
+
   Hokuyo3dTopic* frame_topic = nullptr;
   Hokuyo3dTopic* field_topic = nullptr;
   Hokuyo3dTopic* line_topic = nullptr;

@@ -10,6 +10,9 @@
     <param name="imu_frame_id" value="hokuyo3d_imu" />
     <param name="mag_frame_id" value="hokuyo3d_mag" />
     <param name="allow_jump_back" value="false" />
+    <param name="enable_frame_topic" value="false" />
+    <param name="enable_field_topic" value="true" />
+    <param name="enable_line_topic" value="true" />
     <param name="output_cycle" value="field" />
   </node>
 </launch>
