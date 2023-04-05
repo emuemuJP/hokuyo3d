@@ -6,6 +6,7 @@
     <param name="port" value="10940"/>
     <param name="horizontal_interlace" value="4"/>
     <param name="vertical_interlace" value="1"/>
+    <param name="range_min" value="0.1"/>
     <param name="frame_id" value="hokuyo3d" />
     <param name="imu_frame_id" value="hokuyo3d_imu" />
     <param name="mag_frame_id" value="hokuyo3d_mag" />
