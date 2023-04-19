@@ -58,6 +58,7 @@ public:
     ros::SubscriberStatusCallback cb_con,
     const bool allow_jump_back)
   {
+    ROS_INFO("Launch %s topic.", topic_name.c_str());
     pub_pc2_ = pnh.advertise<sensor_msgs::PointCloud2>(topic_name, 5, cb_con, cb_con);
     cloud2_.height = 1;
     cloud2_.is_bigendian = false;
@@ -91,8 +92,8 @@ public:
     // Pack PointCloud2 message
     cloud2_.data.resize((cloud2_.width + index[range_index.nspots]) * cloud2_.point_step);
 
-    data_frame_ = reinterpret_cast<float*>(&cloud2_.data[0]);
-    data_frame_ += cloud2_.width * cloud2_.point_step / sizeof(float);
+    data_ = reinterpret_cast<float*>(&cloud2_.data[0]);
+    data_ += cloud2_.width * cloud2_.point_step / sizeof(float);
   }
 
   void publish(int topic_header)
@@ -116,10 +117,10 @@ public:
 
   void addPoint(const vssp::XYZI& point)
   {
-      *(data_frame_++) = point.x;
-      *(data_frame_++) = point.y;
-      *(data_frame_++) = point.z;
-      *(data_frame_++) = point.i;
+      *(data_++) = point.x;
+      *(data_++) = point.y;
+      *(data_++) = point.z;
+      *(data_++) = point.i;
       cloud2_.width++;
   }
 
@@ -140,7 +141,7 @@ protected:
   sensor_msgs::PointCloud2 cloud2_;
   ros::Time cloud2_stamp_last_;
   bool allow_jump_back_;
-  float* data_frame_;
+  float* data_;
 };
 
 
@@ -406,6 +407,7 @@ public:
     pnh_.param("enable_line_topic", enable_line_topic_, false);
 
     driver_.setTimeout(2.0);
+    // Convert the boolean value to a string representation
     ROS_INFO("Connecting to %s", ip_.c_str());
     driver_.registerCallback(boost::bind(&Hokuyo3dNode::cbPoint, this, _1, _2, _3, _4, _5, _6));
     driver_.registerAuxCallback(boost::bind(&Hokuyo3dNode::cbAux, this, _1, _2, _3, _4));
@@ -425,7 +427,6 @@ public:
 
     boost::lock_guard<boost::mutex> lock(connect_mutex_);
     pub_pc_ = pnh_.advertise<sensor_msgs::PointCloud>("hokuyo_cloud", 5, cb_con, cb_con);
-
     if(enable_frame_topic_) frame_topic = new Hokuyo3dTopic(pnh_, frame_id_, std::string("hokuyo_cloud2_frame"), cb_con, allow_jump_back_);
     if(enable_field_topic_) field_topic = new Hokuyo3dTopic(pnh_, frame_id_, std::string("hokuyo_cloud2_field"), cb_con, allow_jump_back_);
     if(enable_line_topic_)  line_topic  = new Hokuyo3dTopic(pnh_, frame_id_, std::string("hokuyo_cloud2_line"),  cb_con, allow_jump_back_);
@@ -440,7 +441,7 @@ public:
     driver_.requestData(true, false);
     driver_.requestData(false, false);
     driver_.poll();
-    ROS_INFO("Communication stoped");
+    ROS_INFO("Communication stopped");
   }
 
   void cbSubscriber()
@@ -456,7 +457,8 @@ public:
       enable_pc_ = false;
       ROS_DEBUG("PointCloud output disabled");
     }
-    if (frame_topic->getNumSubscribers() > 0 || field_topic->getNumSubscribers() > 0 || line_topic->getNumSubscribers() > 0)
+
+    if (enable_frame_topic_ && frame_topic->getNumSubscribers() > 0 || enable_field_topic_ && field_topic->getNumSubscribers() > 0 || enable_line_topic_ && line_topic->getNumSubscribers() > 0)
     {
       enable_pc2_ = true;
       ROS_DEBUG("PointCloud2 output enabled");
