@@ -2,7 +2,7 @@
 <launch>
   <arg name="basename" default="hokuyo3d"/>
   <node pkg="hokuyo3d" type="hokuyo3d" name="hokuyo3d" respawn="true">
-    <param name="ip" value="172.16.0.10" />
+    <param name="ip" value="192.168.11.154" />
     <param name="port" value="10940"/>
     <param name="horizontal_interlace" value="4"/>
     <param name="vertical_interlace" value="1"/>
